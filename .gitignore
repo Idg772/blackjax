@@ -108,3 +108,6 @@ venv_blackjax/
 .coverage
 coverage.xml
 coverage
+
+# uv
+uv.lock

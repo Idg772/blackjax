@@ -24,6 +24,7 @@ from .mcmc import laplace_hmc as _laplace_hmc
 from .mcmc import mala as _mala
 from .mcmc import marginal_latent_gaussian
 from .mcmc import mclmc as _mclmc
+from .mcmc import multinomial_hmc as _multinomial_hmc
 from .mcmc import nuts as _nuts
 from .mcmc import periodic_orbital, random_walk
 from .mcmc import rmhmc as _rmhmc
@@ -126,7 +127,9 @@ ghmc = generate_top_level_api_from(_ghmc)
 barker = generate_top_level_api_from(_barker)
 barker_proposal = barker  # backwards-compatible alias
 
-hmc_family = [hmc, nuts]
+multinomial_hmc = generate_top_level_api_from(_multinomial_hmc)
+
+hmc_family = [hmc, nuts, multinomial_hmc]
 
 # SMC
 adaptive_persistent_sampling_smc = generate_top_level_api_from(
@@ -195,5 +198,6 @@ __all__ = [
     "adjusted_mclmc_find_L_and_step_size",  # adjusted mclmc adaptation
     "ess",  # diagnostics
     "rhat",
+    "multinomial_hmc",
     "multipathfinder",
 ]
