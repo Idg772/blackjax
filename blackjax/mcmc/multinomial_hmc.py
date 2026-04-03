@@ -18,15 +18,17 @@ next state from the **entire leapfrog trajectory** using a categorical
 distribution weighted by the canonical density ``exp(-H(z_i))``, rather than
 proposing only the trajectory endpoint as standard HMC does.
 
-This is the same proposal mechanism used internally by NUTS (progressive
-multinomial sampling), but applied to a fixed-length trajectory.  The result is
-better effective-sample-size per gradient evaluation compared to endpoint HMC,
-while retaining a user-specified trajectory length.
+This uses the same within-subtree proposal mechanism as NUTS
+(``progressive_uniform_sampling``), but applied to a fixed-length trajectory
+rather than a dynamically-expanding tree.  Because every leapfrog state is a
+candidate, multinomial HMC yields higher effective-sample-size per gradient
+evaluation than endpoint HMC, especially at shorter trajectory lengths.
 
 The implementation reuses BlackJAX's existing progressive sampling machinery
 (``proposal.progressive_uniform_sampling``) so that only O(1) memory is needed
 regardless of trajectory length.
 """
+
 from typing import Callable, Union
 
 import jax
@@ -36,9 +38,13 @@ import blackjax.mcmc.hmc as hmc
 import blackjax.mcmc.integrators as integrators
 import blackjax.mcmc.metrics as metrics
 from blackjax.base import SamplingAlgorithm
-from blackjax.mcmc.proposal import Proposal, progressive_uniform_sampling, proposal_generator
+from blackjax.mcmc.proposal import (
+    Proposal,
+    progressive_uniform_sampling,
+    proposal_generator,
+)
 from blackjax.mcmc.trajectory import hmc_energy
-from blackjax.types import ArrayLikeTree, ArrayTree, PRNGKey
+from blackjax.types import ArrayLikeTree, PRNGKey
 
 __all__ = [
     "init",
