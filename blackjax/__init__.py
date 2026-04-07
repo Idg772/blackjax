@@ -1,4 +1,5 @@
 import dataclasses
+import functools
 from typing import Callable
 
 from blackjax._version import __version__
@@ -24,7 +25,6 @@ from .mcmc import laplace_hmc as _laplace_hmc
 from .mcmc import mala as _mala
 from .mcmc import marginal_latent_gaussian
 from .mcmc import mclmc as _mclmc
-from .mcmc import multinomial_hmc as _multinomial_hmc
 from .mcmc import nuts as _nuts
 from .mcmc import periodic_orbital, random_walk
 from .mcmc import rmhmc as _rmhmc
@@ -127,7 +127,15 @@ ghmc = generate_top_level_api_from(_ghmc)
 barker = generate_top_level_api_from(_barker)
 barker_proposal = barker  # backwards-compatible alias
 
-multinomial_hmc = generate_top_level_api_from(_multinomial_hmc)
+multinomial_hmc = GenerateSamplingAPI(
+    functools.partial(
+        _hmc.as_top_level_api, proposal_generator=_hmc.multinomial_hmc_proposal
+    ),
+    _hmc.init,
+    functools.partial(
+        _hmc.build_kernel, proposal_generator=_hmc.multinomial_hmc_proposal
+    ),
+)
 
 hmc_family = [hmc, nuts, multinomial_hmc]
 

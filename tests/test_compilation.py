@@ -12,6 +12,7 @@ import jax.scipy as jscipy
 from absl.testing import absltest
 
 import blackjax
+from blackjax.mcmc.hmc import multinomial_hmc_proposal
 
 
 class CompilationTest(chex.TestCase):
@@ -100,7 +101,7 @@ class CompilationTest(chex.TestCase):
 
     def test_multinomial_hmc(self):
         """Count the number of times the logdensity is compiled when using
-        Multinomial HMC.
+        Multinomial HMC via hmc.build_kernel with proposal_generator.
 
         The logdensity is compiled twice: when initializing the state and when
         compiling the kernel.
@@ -114,13 +115,14 @@ class CompilationTest(chex.TestCase):
         chex.clear_trace_counter()
 
         rng_key = jax.random.key(0)
-        state = blackjax.multinomial_hmc.init(1.0, logdensity_fn)
+        state = blackjax.hmc.init(1.0, logdensity_fn)
 
-        kernel = blackjax.multinomial_hmc(
+        kernel = blackjax.hmc(
             logdensity_fn,
             step_size=1e-2,
             inverse_mass_matrix=jnp.array([1.0]),
             num_integration_steps=10,
+            proposal_generator=multinomial_hmc_proposal,
         )
         step = jax.jit(kernel.step)
 
@@ -130,7 +132,8 @@ class CompilationTest(chex.TestCase):
 
     def test_multinomial_hmc_warmup(self):
         """Count the number of times the logdensity is compiled when using
-        window adaptation for the Multinomial HMC algorithm.
+        window adaptation for the Multinomial HMC algorithm via the
+        top-level blackjax.multinomial_hmc alias.
 
         """
 
