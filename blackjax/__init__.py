@@ -129,12 +129,10 @@ barker_proposal = barker  # backwards-compatible alias
 
 multinomial_hmc = GenerateSamplingAPI(
     functools.partial(
-        _hmc.as_top_level_api, proposal_generator=_hmc.multinomial_hmc_proposal
+        _hmc.as_top_level_api, build_proposal=_hmc.multinomial_hmc_proposal
     ),
-    _hmc.init,
-    functools.partial(
-        _hmc.build_kernel, proposal_generator=_hmc.multinomial_hmc_proposal
-    ),
+    _hmc.init,  # intentional: multinomial HMC shares HMCState with standard HMC
+    functools.partial(_hmc.build_kernel, build_proposal=_hmc.multinomial_hmc_proposal),
 )
 
 hmc_family = [hmc, nuts, multinomial_hmc]

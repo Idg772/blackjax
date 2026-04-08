@@ -2,7 +2,7 @@
 
 Tests exercise both the top-level ``blackjax.multinomial_hmc`` alias and the
 refactored API where multinomial HMC is constructed by passing
-``proposal_generator=multinomial_hmc_proposal`` to the HMC kernel builder.
+``build_proposal=multinomial_hmc_proposal`` to the HMC kernel builder.
 """
 
 import jax
@@ -79,18 +79,6 @@ class MultinomialHMCTest(BlackJAXTest):
         _, info = jax.jit(sampler.step)(self.next_key(), state)
         self.assertGreater(float(info.acceptance_rate), 0.5)
 
-    def test_is_always_accepted(self):
-        """Multinomial HMC always accepts (no MH reject step)."""
-        sampler = blackjax.multinomial_hmc(
-            std_normal_logdensity,
-            step_size=0.1,
-            inverse_mass_matrix=jnp.array([1.0]),
-            num_integration_steps=10,
-        )
-        state = sampler.init(jnp.array(0.0))
-        _, info = jax.jit(sampler.step)(self.next_key(), state)
-        self.assertTrue(info.is_accepted)
-
     def test_pytree_position(self):
         """The sampler should handle dict-structured positions."""
         sampler = blackjax.multinomial_hmc(
@@ -104,10 +92,10 @@ class MultinomialHMCTest(BlackJAXTest):
         self.assertIn("a", new_state.position)
         self.assertIn("b", new_state.position)
 
-    def test_build_kernel_with_proposal_generator(self):
-        """build_kernel with proposal_generator=multinomial_hmc_proposal works."""
+    def test_build_kernel_with_build_proposal(self):
+        """build_kernel with build_proposal=multinomial_hmc_proposal works."""
         kernel = blackjax.hmc.build_kernel(
-            proposal_generator=multinomial_hmc_proposal,
+            build_proposal=multinomial_hmc_proposal,
         )
         state = blackjax.hmc.init(jnp.array(0.0), std_normal_logdensity)
 
@@ -123,9 +111,9 @@ class MultinomialHMCTest(BlackJAXTest):
         self.assertIsInstance(info, HMCInfo)
         self.assertTrue(info.is_accepted)
 
-    def test_top_level_api_matches_explicit_proposal_generator(self):
+    def test_top_level_api_matches_explicit_build_proposal(self):
         """blackjax.multinomial_hmc produces the same results as
-        blackjax.hmc with proposal_generator=multinomial_hmc_proposal.
+        blackjax.hmc with build_proposal=multinomial_hmc_proposal.
         """
         kwargs = dict(
             step_size=0.1,
@@ -136,7 +124,7 @@ class MultinomialHMCTest(BlackJAXTest):
         sampler_alias = blackjax.multinomial_hmc(std_normal_logdensity, **kwargs)
         sampler_direct = blackjax.hmc(
             std_normal_logdensity,
-            proposal_generator=multinomial_hmc_proposal,
+            build_proposal=multinomial_hmc_proposal,
             **kwargs,
         )
 

@@ -199,7 +199,8 @@ def static_progressive_integration(
     An ``integrate(rng_key, initial_state, step_size)`` function that returns
     ``(proposal, is_diverging)``.
     """
-    _, generate_proposal = proposal_generator(hmc_energy(kinetic_energy))
+    hmc_energy_fn = hmc_energy(kinetic_energy)
+    _, generate_proposal = proposal_generator(hmc_energy_fn)
     sample_proposal = progressive_uniform_sampling
 
     def integrate(
@@ -207,7 +208,7 @@ def static_progressive_integration(
         initial_state: IntegratorState,
         step_size,
     ):
-        initial_energy = hmc_energy(kinetic_energy)(initial_state)
+        initial_energy = hmc_energy_fn(initial_state)
         init_proposal = Proposal(initial_state, initial_energy, 0.0, -jnp.inf)
 
         def one_step(i, carry):

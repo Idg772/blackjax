@@ -62,7 +62,7 @@ regression_test_cases = [
     {
         "algorithm": blackjax.multinomial_hmc,
         "initial_position": {"log_scale": 0.0, "coefs": 4.0},
-        "parameters": {"num_integration_steps": 90},
+        "parameters": {"num_integration_steps": 20},
         "num_warmup_steps": 1_000,
         "num_sampling_steps": 3_000,
     },

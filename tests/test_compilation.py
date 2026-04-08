@@ -122,7 +122,7 @@ class CompilationTest(chex.TestCase):
             step_size=1e-2,
             inverse_mass_matrix=jnp.array([1.0]),
             num_integration_steps=10,
-            proposal_generator=multinomial_hmc_proposal,
+            build_proposal=multinomial_hmc_proposal,
         )
         step = jax.jit(kernel.step)
 
@@ -134,6 +134,10 @@ class CompilationTest(chex.TestCase):
         """Count the number of times the logdensity is compiled when using
         window adaptation for the Multinomial HMC algorithm via the
         top-level blackjax.multinomial_hmc alias.
+
+        The logdensity is compiled three times: once during init, once
+        for the warmup kernel inside window_adaptation.run, and once
+        for the post-warmup sampling kernel.
 
         """
 
