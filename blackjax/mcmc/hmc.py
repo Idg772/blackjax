@@ -225,8 +225,7 @@ def multinomial_hmc_proposal(
         Metropolis-Hastings rejection step; the sample is drawn directly
         from the trajectory.  ``acceptance_rate`` is a diagnostic measuring
         the average weight of trajectory states relative to the initial
-        energy.  It is not a standard MH acceptance probability and can
-        exceed 1.0.
+        energy.
         """
         proposal, is_diverging = build_trajectory(rng_key, state, step_size)
 
