@@ -109,6 +109,9 @@ venv_blackjax/
 coverage.xml
 coverage
 
+# uv
+uv.lock
+
 # LLM files
 .claude
 CLAUDE.md

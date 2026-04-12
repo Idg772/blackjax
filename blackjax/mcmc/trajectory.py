@@ -167,6 +167,71 @@ def static_integration(
     return integrate
 
 
+def static_progressive_integration(
+    integrator: Callable,
+    kinetic_energy: Callable,
+    num_integration_steps: int,
+    divergence_threshold: float,
+) -> Callable:
+    """Generate a trajectory by integrating a fixed number of steps and
+    progressively sampling proposals using multinomial weighting.
+
+    Unlike ``static_integration``, which returns only the trajectory endpoint,
+    this function samples one state from the *entire* trajectory proportional
+    to ``exp(-H(z_i))`` using progressive reservoir sampling
+    (``progressive_uniform_sampling``).  Only O(1) memory is needed regardless
+    of trajectory length.
+
+    Parameters
+    ----------
+    integrator
+        One-step symplectic integrator.
+    kinetic_energy
+        Function to compute the current value of the kinetic energy.
+    num_integration_steps
+        Number of integration steps to take.
+    divergence_threshold
+        Value of the difference of energy between two consecutive states above
+        which we say a transition is divergent.
+
+    Returns
+    -------
+    An ``integrate(rng_key, initial_state, step_size)`` function that returns
+    ``(proposal, is_diverging)``.
+    """
+    hmc_energy_fn = hmc_energy(kinetic_energy)
+    _, generate_proposal = proposal_generator(hmc_energy_fn)
+    sample_proposal = progressive_uniform_sampling
+
+    def integrate(
+        rng_key: PRNGKey,
+        initial_state: IntegratorState,
+        step_size,
+    ):
+        initial_energy = hmc_energy_fn(initial_state)
+        init_proposal = Proposal(initial_state, initial_energy, 0.0, -jnp.inf)
+
+        def one_step(i, carry):
+            current_state, current_proposal, any_divergent = carry
+            step_key = jax.random.fold_in(rng_key, i)
+
+            new_state = integrator(current_state, step_size)
+            new_proposal = generate_proposal(initial_energy, new_state)
+            is_diverging = -new_proposal.weight > divergence_threshold
+            any_divergent = any_divergent | is_diverging
+            sampled_proposal = sample_proposal(step_key, current_proposal, new_proposal)
+
+            return (new_state, sampled_proposal, any_divergent)
+
+        (_, final_proposal, is_diverging) = jax.lax.fori_loop(
+            0, num_integration_steps, one_step, (initial_state, init_proposal, False)
+        )
+
+        return final_proposal, is_diverging
+
+    return integrate
+
+
 class DynamicIntegrationState(NamedTuple):
     step: int
     proposal: Proposal

@@ -1,0 +1,148 @@
+"""Tests for the Multinomial HMC kernel.
+
+Tests exercise both the top-level ``blackjax.multinomial_hmc`` alias and the
+refactored API where multinomial HMC is constructed by passing
+``build_proposal=multinomial_hmc_proposal`` to the HMC kernel builder.
+"""
+
+import jax
+import jax.numpy as jnp
+from absl.testing import absltest
+
+import blackjax
+from blackjax.mcmc.hmc import HMCInfo, HMCState, multinomial_hmc_proposal
+from tests.fixtures import BlackJAXTest, std_normal_logdensity
+
+
+class MultinomialHMCTest(BlackJAXTest):
+    """Unit tests for the multinomial HMC sampler."""
+
+    def test_sampling_algorithm_interface(self):
+        """The high-level API returns a SamplingAlgorithm with init/step."""
+        sampler = blackjax.multinomial_hmc(
+            std_normal_logdensity,
+            step_size=0.1,
+            inverse_mass_matrix=jnp.array([1.0]),
+            num_integration_steps=10,
+        )
+        state = sampler.init(jnp.array(0.5))
+        self.assertIsInstance(state, HMCState)
+
+        new_state, info = jax.jit(sampler.step)(self.next_key(), state)
+        self.assertIsInstance(new_state, HMCState)
+        self.assertIsInstance(info, HMCInfo)
+
+    def test_correct_sampling(self):
+        """On a standard normal, the sampler should produce reasonable samples."""
+        sampler = blackjax.multinomial_hmc(
+            std_normal_logdensity,
+            step_size=0.5,
+            inverse_mass_matrix=jnp.array([1.0]),
+            num_integration_steps=20,
+        )
+        state = sampler.init(jnp.array(0.0))
+        step = jax.jit(sampler.step)
+
+        states = []
+        for i in range(500):
+            key = jax.random.fold_in(self.next_key(), i)
+            state, info = step(key, state)
+            states.append(state.position)
+
+        samples = jnp.stack(states)
+        # Mean should be close to 0, std close to 1 for a standard normal
+        self.assertAlmostEqual(float(jnp.mean(samples)), 0.0, delta=0.3)
+        self.assertAlmostEqual(float(jnp.std(samples)), 1.0, delta=0.3)
+
+    def test_divergence_detection(self):
+        """With a huge step size the sampler should flag divergences."""
+        sampler = blackjax.multinomial_hmc(
+            std_normal_logdensity,
+            step_size=1000.0,
+            inverse_mass_matrix=jnp.array([1.0]),
+            num_integration_steps=100,
+            divergence_threshold=100,
+        )
+        state = sampler.init(jnp.array(0.0))
+        _, info = jax.jit(sampler.step)(self.next_key(), state)
+        self.assertTrue(info.is_divergent)
+
+    def test_acceptance_rate(self):
+        """With a well-tuned step size the acceptance rate should be high."""
+        sampler = blackjax.multinomial_hmc(
+            std_normal_logdensity,
+            step_size=0.1,
+            inverse_mass_matrix=jnp.array([1.0]),
+            num_integration_steps=10,
+        )
+        state = sampler.init(jnp.array(0.0))
+        _, info = jax.jit(sampler.step)(self.next_key(), state)
+        self.assertGreater(float(info.acceptance_rate), 0.5)
+
+    def test_pytree_position(self):
+        """The sampler should handle dict-structured positions."""
+        sampler = blackjax.multinomial_hmc(
+            std_normal_logdensity,
+            step_size=0.1,
+            inverse_mass_matrix=jnp.array([1.0, 1.0]),
+            num_integration_steps=10,
+        )
+        state = sampler.init({"a": jnp.array(0.0), "b": jnp.array(1.0)})
+        new_state, info = jax.jit(sampler.step)(self.next_key(), state)
+        self.assertIn("a", new_state.position)
+        self.assertIn("b", new_state.position)
+
+    def test_build_kernel_with_build_proposal(self):
+        """build_kernel with build_proposal=multinomial_hmc_proposal works."""
+        kernel = blackjax.hmc.build_kernel(
+            build_proposal=multinomial_hmc_proposal,
+        )
+        state = blackjax.hmc.init(jnp.array(0.0), std_normal_logdensity)
+
+        new_state, info = jax.jit(kernel, static_argnums=(2,))(
+            self.next_key(),
+            state,
+            std_normal_logdensity,
+            0.1,
+            jnp.array([1.0]),
+            10,
+        )
+        self.assertIsInstance(new_state, HMCState)
+        self.assertIsInstance(info, HMCInfo)
+        self.assertTrue(info.is_accepted)
+
+    def test_top_level_api_matches_explicit_build_proposal(self):
+        """blackjax.multinomial_hmc produces the same results as
+        blackjax.hmc with build_proposal=multinomial_hmc_proposal.
+        """
+        kwargs = dict(
+            step_size=0.1,
+            inverse_mass_matrix=jnp.array([1.0]),
+            num_integration_steps=10,
+        )
+
+        sampler_alias = blackjax.multinomial_hmc(std_normal_logdensity, **kwargs)
+        sampler_direct = blackjax.hmc(
+            std_normal_logdensity,
+            build_proposal=multinomial_hmc_proposal,
+            **kwargs,
+        )
+
+        state = blackjax.hmc.init(jnp.array(0.0), std_normal_logdensity)
+        key = self.next_key()
+
+        new_state_alias, info_alias = jax.jit(sampler_alias.step)(key, state)
+        new_state_direct, info_direct = jax.jit(sampler_direct.step)(key, state)
+
+        self.assertEqual(
+            float(new_state_alias.logdensity),
+            float(new_state_direct.logdensity),
+        )
+        self.assertEqual(
+            float(info_alias.acceptance_rate),
+            float(info_direct.acceptance_rate),
+        )
+
+
+if __name__ == "__main__":
+    absltest.main()

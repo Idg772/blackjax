@@ -1,4 +1,5 @@
 import dataclasses
+import functools
 from typing import Callable
 
 from blackjax._version import __version__
@@ -126,7 +127,15 @@ ghmc = generate_top_level_api_from(_ghmc)
 barker = generate_top_level_api_from(_barker)
 barker_proposal = barker  # backwards-compatible alias
 
-hmc_family = [hmc, nuts]
+multinomial_hmc = GenerateSamplingAPI(
+    functools.partial(
+        _hmc.as_top_level_api, build_proposal=_hmc.multinomial_hmc_proposal
+    ),
+    _hmc.init,  # intentional: multinomial HMC shares HMCState with standard HMC
+    functools.partial(_hmc.build_kernel, build_proposal=_hmc.multinomial_hmc_proposal),
+)
+
+hmc_family = [hmc, nuts, multinomial_hmc]
 
 # SMC
 adaptive_persistent_sampling_smc = generate_top_level_api_from(
@@ -195,5 +204,6 @@ __all__ = [
     "adjusted_mclmc_find_L_and_step_size",  # adjusted mclmc adaptation
     "ess",  # diagnostics
     "rhat",
+    "multinomial_hmc",
     "multipathfinder",
 ]

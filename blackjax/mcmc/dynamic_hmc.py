@@ -23,6 +23,7 @@ from blackjax.base import SamplingAlgorithm, build_sampling_algorithm
 from blackjax.mcmc.adjusted_mclmc import rescale
 from blackjax.mcmc.hmc import HMCInfo, HMCState
 from blackjax.mcmc.hmc import build_kernel as build_static_hmc_kernel
+from blackjax.mcmc.hmc import hmc_proposal
 from blackjax.types import Array, ArrayLikeTree, ArrayTree, PRNGKey
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "build_kernel",
     "halton_sequence",
     "as_top_level_api",
+    "hmc_proposal",
 ]
 
 
@@ -62,6 +64,7 @@ def build_kernel(
     divergence_threshold: float = 1000,
     next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
     integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+    build_proposal: Callable = hmc_proposal,
 ):
     """Build a Dynamic HMC kernel where the number of integration steps is chosen randomly.
 
@@ -76,6 +79,11 @@ def build_kernel(
     integration_steps_fn
         Function that generates the next pseudo or quasi-random number of integration steps in the
         sequence, given the current `random_generator_arg`. Needs to return an `int`.
+    build_proposal
+        A callable with signature
+        ``(integrator, kinetic_energy, step_size, num_integration_steps,
+        divergence_threshold) -> generate`` that builds the proposal function.
+        Defaults to :func:`hmc_proposal` (standard endpoint HMC).
 
     Returns
     -------
@@ -84,7 +92,7 @@ def build_kernel(
     information about the transition.
 
     """
-    hmc_base = build_static_hmc_kernel(integrator, divergence_threshold)
+    hmc_base = build_static_hmc_kernel(integrator, divergence_threshold, build_proposal)
 
     def kernel(
         rng_key: PRNGKey,
@@ -130,6 +138,7 @@ def as_top_level_api(
     integrator: Callable = integrators.velocity_verlet,
     next_random_arg_fn: Callable = lambda key: jax.random.split(key)[1],
     integration_steps_fn: Callable = lambda key: jax.random.randint(key, (), 1, 10),
+    build_proposal: Callable = hmc_proposal,
 ) -> SamplingAlgorithm:
     """Implements the (basic) user interface for the dynamic HMC kernel.
 
@@ -153,7 +162,12 @@ def as_top_level_api(
     integration_steps_fn
         Function that generates the next pseudo or quasi-random number of integration steps in the
         sequence, given the current `random_generator_arg`.
-
+    build_proposal
+        A callable with signature
+        ``(integrator, kinetic_energy, step_size, num_integration_steps,
+        divergence_threshold) -> generate`` that builds the proposal function.
+        Defaults to :func:`hmc_proposal` (standard endpoint HMC).  Pass
+        :func:`multinomial_hmc_proposal` for multinomial trajectory sampling.
 
     Returns
     -------
@@ -164,6 +178,7 @@ def as_top_level_api(
         divergence_threshold,
         next_random_arg_fn,
         integration_steps_fn,
+        build_proposal,
     )
 
     return build_sampling_algorithm(
