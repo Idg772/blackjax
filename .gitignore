@@ -111,3 +111,8 @@ coverage
 
 # uv
 uv.lock
+
+# LLM files
+.claude
+CLAUDE.md
+GEMINI.md

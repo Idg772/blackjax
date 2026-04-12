@@ -84,7 +84,6 @@ maxdepth: 1
 hidden:
 ---
 Quickstart <examples/quickstart.md>
-Design Principles <examples/design_principles.md>
 ```
 
 ```{toctree}
@@ -130,4 +129,14 @@ maxdepth: 2
 ---
 API Reference<autoapi/blackjax/index>
 Bibliography<bib.rst>
+```
+
+```{toctree}
+---
+maxdepth: 1
+caption: DEVELOPER DOCUMENTATION
+hidden:
+---
+Design Principles <developer/design_principles.md>
+Contributing a New Algorithm <developer/new_algorithm_guide.md>
 ```
