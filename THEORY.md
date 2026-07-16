@@ -6,7 +6,8 @@ inverse and makes the intended once-per-outer-step geometry update explicit in
 the source.
 
 The implementation is in [`blackjax/ns/nss.py`](blackjax/ns/nss.py). The
-benchmark data and its reproducible Matplotlib plot are under [`benchmarks/`](benchmarks/).
+benchmark runner, data, and reproducible Matplotlib plot are under
+[`benchmarks/`](benchmarks/).
 
 ![Nested-sampler covariance benchmark](benchmarks/nss_covariance_scaling.png)
 
@@ -133,8 +134,17 @@ The checked-in benchmark used:
 - JAX 0.10.0 with `float32`;
 - one full jitted nested-sampler step, excluding compilation;
 - \(N=4d\), \(M=2d\), and \(K=1\);
+- seed 0 with standard-normal live points and a shifted-normal likelihood;
 - the same initial state and keys for both methods;
 - alternating method order across timed repetitions.
+
+The data generator is
+[`benchmarks/benchmark_nss_covariance_scaling.py`](benchmarks/benchmark_nss_covariance_scaling.py).
+It carries a local copy of the pre-refactor covariance-plus-inverse proposal,
+constructs both full nested samplers, blocks all asynchronous JAX work, compiles
+each step before timing, and saves progress after every completed dimension.
+The production package therefore does not retain the legacy inverse path merely
+for benchmarking.
 
 Times are medians, with median absolute deviation recorded in
 [`benchmarks/nss_covariance_scaling.csv`](benchmarks/nss_covariance_scaling.csv).
@@ -142,29 +152,45 @@ The 4096-dimensional endpoint has only one timed repetition.
 
 | Dimension | Covariance + inverse | Factored once | Speedup | Fixed-seed paths |
 |---:|---:|---:|---:|:---|
-| 1024 | 203.4 ms | 128.4 ms | 1.58x | matched |
-| 1536 | 1.004 s | 0.350 s | 2.86x | matched |
-| 2048 | 2.790 s | 0.818 s | 3.41x | matched |
-| 3072 | 13.96 s | 4.38 s | 3.19x | diverged |
-| 4096 | 45.73 s | 19.62 s | 2.33x | diverged |
+| 1024 | 199.4 ms | 126.4 ms | 1.58x | matched |
+| 1536 | 0.953 s | 0.351 s | 2.71x | matched |
+| 2048 | 3.160 s | 1.174 s | 2.69x | matched |
+| 3072 | 23.52 s | 9.91 s | 2.37x | diverged |
+| 4096 | 58.76 s | 22.59 s | 2.60x | diverged |
 
 Fixed-seed slice paths matched through 2048 dimensions, with maximum position
-differences below \(5.5\times10^{-6}\). At 3072 and 4096 dimensions,
+differences below \(4.7\times10^{-6}\). The runner classifies the resulting live
+positions with `rtol=1e-5` and `atol=1e-5`. At 3072 and 4096 dimensions,
 floating-point differences changed some control-flow decisions. Those endpoints
-still measure valid sampler executions, but they are not instruction-for-instruction
-comparisons. The hollow plot markers identify them.
+still measure valid sampler executions, but they are not
+instruction-for-instruction comparisons. The hollow plot markers identify them.
 
 These timings are backend- and hardware-specific. They establish that the
 factor-once formulation produces a substantial high-dimensional CPU speedup;
 they should not be treated as a GPU performance claim.
 
-## Reproducing the plot
+## Reproducing the data and plot
 
-From the repository root:
+From the repository root, regenerate the complete extended CPU sweep and then
+the plot with:
 
 ```bash
+JAX_PLATFORM_NAME=cpu uv run python benchmarks/benchmark_nss_covariance_scaling.py
 uv run python benchmarks/plot_nss_covariance_scaling.py
 ```
 
-The script reads the checked-in CSV and regenerates
-`benchmarks/nss_covariance_scaling.png`.
+The default benchmark reaches 4096 dimensions, uses several gigabytes of memory,
+and can take a long time because both implementations must compile at every
+shape. For a quick end-to-end check without replacing the checked-in data:
+
+```bash
+JAX_PLATFORM_NAME=cpu uv run python benchmarks/benchmark_nss_covariance_scaling.py \
+  --dimensions 4 8 --repeats 2 --output /tmp/nss_covariance_scaling.csv
+uv run python benchmarks/plot_nss_covariance_scaling.py \
+  --data /tmp/nss_covariance_scaling.csv \
+  --output /tmp/nss_covariance_scaling.png
+```
+
+The benchmark's `--dimensions`, `--repeats`, workload factors, seed, sampler
+limits, and output path are configurable through command-line flags. Run it with
+`--help` for the full list.
