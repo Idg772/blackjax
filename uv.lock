@@ -171,6 +171,7 @@ progress = [
 [package.dev-dependencies]
 dev = [
     { name = "chex" },
+    { name = "matplotlib" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-benchmark" },
@@ -222,6 +223,7 @@ provides-extras = ["progress"]
 [package.metadata.requires-dev]
 dev = [
     { name = "chex", specifier = ">=0.1.83" },
+    { name = "matplotlib", specifier = ">=3.10" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-benchmark" },

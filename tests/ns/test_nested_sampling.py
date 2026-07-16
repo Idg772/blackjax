@@ -307,16 +307,41 @@ class NestedSliceSamplingTest(chex.TestCase):
         super().setUp()
         self.key = jax.random.key(42)
 
-    def test_nss_direction_functions(self):
-        """NSS direction: covariance-shaped, scaled to Mahalanobis norm 2."""
+    def test_nss_direction_from_covariance_factor(self):
+        """NSS direction uses one supplied factor and has Mahalanobis norm 2."""
         key = jax.random.key(456)
         cov = jnp.array([[2.0, 0.5, 0.0], [0.5, 1.0, 0.0], [0.0, 0.0, 1.5]])
+        cov_sqrt = jnp.linalg.cholesky(cov)
 
-        direction = nss.sample_direction_from_covariance(key, jnp.zeros(3), cov)
+        direction = nss.sample_direction_from_covariance_factor(
+            key, jnp.zeros(3), cov_sqrt
+        )
 
         chex.assert_shape(direction, (3,))
-        mahalanobis = jnp.sqrt(direction @ jnp.linalg.inv(cov) @ direction)
-        self.assertAlmostEqual(float(mahalanobis), 2.0, places=4)
+        standardized_direction = jax.scipy.linalg.solve_triangular(
+            cov_sqrt, direction, lower=True
+        )
+        self.assertAlmostEqual(float(jnp.linalg.norm(standardized_direction)), 2.0)
+
+        z = jax.random.normal(key, shape=(3,), dtype=cov_sqrt.dtype)
+        expected = 2.0 * (cov_sqrt @ z) / jnp.linalg.norm(z)
+        chex.assert_trees_all_close(direction, expected)
+
+    def test_live_covariance_is_factored_once(self):
+        """The default adaptive geometry stores a factor, not a covariance."""
+        positions = jax.random.normal(jax.random.key(123), (20, 3))
+        algo = nss.as_top_level_api(
+            gaussian_logprior,
+            gaussian_loglikelihood,
+            num_inner_steps=6,
+        )
+
+        state = algo.init(positions)
+
+        self.assertEqual(set(state.inner_kernel_params), {"cov_sqrt"})
+        cov_sqrt = state.inner_kernel_params["cov_sqrt"]
+        expected_cov = jnp.cov(positions, ddof=0, rowvar=False)
+        chex.assert_trees_all_close(cov_sqrt @ cov_sqrt.T, expected_cov)
 
     def test_covariance_proposal(self):
         """The factored NSS proposal: covariance step, likelihood-gated is_valid."""
@@ -348,7 +373,7 @@ class NestedSliceSamplingTest(chex.TestCase):
         """proposal / inner_kernel_params are overridable on the top-level API."""
 
         def my_params(rng_key, state, info, params=None):
-            return {"cov": 2.0 * jnp.eye(2)}
+            return {"cov_sqrt": 2.0 * jnp.eye(2)}
 
         algo = nss.as_top_level_api(
             gaussian_logprior,
@@ -359,7 +384,9 @@ class NestedSliceSamplingTest(chex.TestCase):
         )
         state = algo.init(jnp.zeros((20, 2)))
         # init seeds the params with the supplied function, not just the default
-        chex.assert_trees_all_close(state.inner_kernel_params["cov"], 2.0 * jnp.eye(2))
+        chex.assert_trees_all_close(
+            state.inner_kernel_params["cov_sqrt"], 2.0 * jnp.eye(2)
+        )
         # and a full step runs end-to-end with the custom seams
         new_state, _ = jax.jit(algo.step)(self.key, state)
         chex.assert_shape(new_state.particles.position, (20, 2))

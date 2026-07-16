@@ -47,31 +47,37 @@ __all__ = [
     "coordinate_proposal",
     "covariance_proposal",
     "init",
-    "live_covariance",
+    "live_covariance_factor",
     "live_widths",
+    "sample_direction_from_covariance_factor",
     "slice_constrained_step",
     "swig_as_top_level_api",
 ]
 
 
-def sample_direction_from_covariance(
-    rng_key: PRNGKey, position: ArrayTree, cov: Array
+def sample_direction_from_covariance_factor(
+    rng_key: PRNGKey, position: ArrayTree, cov_sqrt: Array
 ) -> ArrayTree:
-    """A random direction shaped by ``cov``, scaled to Mahalanobis norm 2.
+    """A random direction shaped by ``cov_sqrt``, with Mahalanobis norm 2.
 
-    Samples ``d ~ N(0, cov)`` and normalizes it with ``inv(cov)`` to a length of
-    2 in the covariance metric (~2 std devs, a step size that mixes well). Uses
-    ``inv(cov)`` rather than an explicit Cholesky factor, has encountered differing
-    behavior on GPU.
+    Draws a standard-normal vector ``z`` and returns
+    ``2 * cov_sqrt @ z / ||z||``. When ``cov_sqrt @ cov_sqrt.T = cov``, the
+    resulting direction has length 2 in the covariance metric (~2 std devs, a
+    step size that mixes well), without forming ``inv(cov)``.
     """
     _, unravel_fn = jax.flatten_util.ravel_pytree(position)
-    d = jax.random.multivariate_normal(rng_key, jnp.zeros(cov.shape[0]), cov)
-    d = 2.0 * d / jnp.sqrt(d @ jnp.linalg.inv(cov) @ d)
-    return unravel_fn(d)
+    dimension = cov_sqrt.shape[-1]
+    z = jax.random.normal(
+        rng_key,
+        shape=(dimension,),
+        dtype=cov_sqrt.dtype,
+    )
+    direction = 2.0 * (cov_sqrt @ z) / jnp.linalg.norm(z)
+    return unravel_fn(direction)
 
 
 def covariance_proposal(
-    init_state_fn: Callable, loglikelihood_0: Array, cov: Array
+    init_state_fn: Callable, loglikelihood_0: Array, cov_sqrt: Array
 ) -> Callable:
     """Proposal generator for nested slice sampling.
 
@@ -86,7 +92,7 @@ def covariance_proposal(
 
     def proposal_generator(rng_key, position, logdensity_fn):
         del logdensity_fn  # NS gates on the recorded loglikelihood, not logdensity
-        direction = sample_direction_from_covariance(rng_key, position, cov)
+        direction = sample_direction_from_covariance_factor(rng_key, position, cov_sqrt)
 
         def slice_fn(t):
             x = jax.tree.map(lambda p, d: p + t * d, position, direction)
@@ -128,18 +134,18 @@ def coordinate_proposal(
     return proposal_generator
 
 
-def live_covariance(
+def live_covariance_factor(
     rng_key: PRNGKey,
     state: NSState,
     info: NSInfo,
     params: dict[str, ArrayTree] | None = None,
 ) -> dict[str, ArrayTree]:
-    """Live-point covariance, recomputed each step to shape the direction."""
+    """Cholesky factor of the live covariance, recomputed once per NS step."""
     # rng_key, info and params are unused here but required by the
     # adaptive-kernel callback protocol (update_inner_kernel_params_fn).
-    return {
-        "cov": jnp.atleast_2d(particles_covariance_matrix(state.particles.position))
-    }
+    del rng_key, info, params
+    cov = jnp.atleast_2d(particles_covariance_matrix(state.particles.position))
+    return {"cov_sqrt": jnp.linalg.cholesky(cov)}
 
 
 def live_widths(
@@ -150,11 +156,11 @@ def live_widths(
 ) -> dict[str, ArrayTree]:
     """Per-axis live-point spread (std): the per-coordinate slice widths for SwiG.
 
-    The coordinate counterpart of :func:`live_covariance`: only the marginal
+    The coordinate counterpart of :func:`live_covariance_factor`: only the marginal
     per-axis spread is used, so axis correlations are deliberately ignored -- the
     defining trait of a coordinate (slice-within-Gibbs) move. Overridable via the
     ``inner_kernel_params`` seam of :func:`build_swig_kernel` and
-    :func:`swig_as_top_level_api`, mirroring :func:`live_covariance`.
+    :func:`swig_as_top_level_api`, mirroring :func:`live_covariance_factor`.
     """
     # rng_key, info and params are unused here but required by the
     # adaptive-kernel callback protocol (update_inner_kernel_params_fn).
@@ -188,7 +194,7 @@ def build_kernel(
     max_steps: int = 10,
     max_shrinkage: int = 100,
     proposal: Callable = covariance_proposal,
-    inner_kernel_params: Callable = live_covariance,
+    inner_kernel_params: Callable = live_covariance_factor,
 ) -> Callable:
     """Build the Nested Slice Sampling kernel.
 
@@ -207,13 +213,14 @@ def build_kernel(
     max_shrinkage
         Cap on shrinkage evaluations per slice (default 100).
     proposal
-        Proposal factory ``(init_state_fn, loglikelihood_0, cov) ->
+        Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) ->
         proposal_generator`` (:func:`covariance_proposal` by default). Override
         to write a custom nested stepper.
     inner_kernel_params
         Computes the inner-kernel parameters from the live points each step,
-        ``(rng_key, state, info, params) -> params`` (:func:`live_covariance`
-        by default, the live-point covariance).
+        ``(rng_key, state, info, params) -> params``
+        (:func:`live_covariance_factor` by default, the Cholesky factor of the
+        live-point covariance).
 
     Returns
     -------
@@ -364,7 +371,7 @@ def as_top_level_api(
     max_steps: int = 10,
     max_shrinkage: int = 100,
     proposal: Callable = covariance_proposal,
-    inner_kernel_params: Callable = live_covariance,
+    inner_kernel_params: Callable = live_covariance_factor,
 ) -> SamplingAlgorithm:
     """Creates a Nested Slice Sampling (NSS) algorithm, ``blackjax.nss``.
 
@@ -391,13 +398,14 @@ def as_top_level_api(
     max_shrinkage
         Cap on shrinkage evaluations per slice (default 100).
     proposal
-        Proposal factory ``(init_state_fn, loglikelihood_0, cov) ->
+        Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) ->
         proposal_generator`` (:func:`covariance_proposal` by default). Override
         to write a custom nested stepper.
     inner_kernel_params
         Computes the inner-kernel parameters from the live points,
-        ``(rng_key, state, info, params) -> params`` (:func:`live_covariance`
-        by default). Used both to seed ``init`` and to update each step.
+        ``(rng_key, state, info, params) -> params``
+        (:func:`live_covariance_factor` by default). Used both to seed ``init``
+        and to update each step.
 
     Returns
     -------

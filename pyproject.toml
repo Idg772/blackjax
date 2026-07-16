@@ -75,6 +75,7 @@ write_to = "blackjax/_version.py"
 [dependency-groups]
 dev = [
     "chex>=0.1.83",
+    "matplotlib>=3.10",
     "pre-commit",
     "pytest",
     "pytest-benchmark",
