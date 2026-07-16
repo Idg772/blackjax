@@ -146,7 +146,7 @@ Module Contents
    :rtype: A list of tuples (window_label, is_middle_window_end).
 
 
-.. py:function:: staged_adaptation(algorithm, logdensity_fn: Callable, metric: str | blackjax.adaptation.metric_recipes.MetricRecipe | blackjax.adaptation.metric_recipes.MetricCore = 'welford_diag', *, max_grad_budget: int | None = None, imm_shrinkage_to_previous: float = 0.0, initial_inverse_mass_matrix: blackjax.types.Array | None = None, initial_step_size: float = 1.0, target_acceptance_rate: float = 0.8, adaptation_info_fn: Callable = return_all_adapt_info, integrator=mcmc.integrators.velocity_verlet, schedule_fn: Callable | None = None, initial_metric_state: Any = None, **extra_parameters) -> blackjax.base.AdaptationAlgorithm
+.. py:function:: staged_adaptation(algorithm, logdensity_fn: Callable, metric: str | blackjax.adaptation.metric_recipes.MetricRecipe | blackjax.adaptation.metric_recipes.MetricCore = 'welford_diag', *, max_grad_budget: int | None = None, n_chains: int = 1, imm_shrinkage_to_previous: float = 0.0, initial_inverse_mass_matrix: blackjax.types.Array | None = None, initial_step_size: float = 1.0, target_acceptance_rate: float = 0.8, adaptation_info_fn: Callable = return_all_adapt_info, integrator=mcmc.integrators.velocity_verlet, schedule_fn: Callable | None = None, initial_metric_state: Any = None, **extra_parameters) -> blackjax.base.AdaptationAlgorithm
 
    Adapt the step size and inverse mass matrix for HMC-family algorithms.
 
@@ -170,6 +170,15 @@ Module Contents
                     a :class:`~blackjax.mcmc.metrics.LowRankInverseMassMatrix` (with
                     U=0, lam=1 when the controller stays diagonal — bit-equivalent to
                     the diagonal metric).
+
+                    .. warning::
+                       ``metric="auto"`` is **experimental (v1)**.  The low-rank
+                       escalation is not robustly calibrated at high dimension: when
+                       the residual spectrum's dominant structure sits near the detection
+                       boundary, whether the controller escalates can depend on the
+                       random seed.  Use for exploration and algorithm development, not
+                       for production efficiency claims.  A multi-chain escalation
+                       trigger (planned for v2) is expected to make the decision robust.
                   - **str** — a registry name (``"welford_diag"`` (default),
                     ``"welford_dense"``, ``"fisher_diag"``); looked up via
                     :func:`~blackjax.adaptation.metric_recipes.lookup_recipe` and built

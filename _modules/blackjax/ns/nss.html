@@ -52,7 +52,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.1.dev1+g896932c1c" />
+  <meta name="docsearch:version" content="0.1.dev1+g0a18db2b5" />
   </head>
   
   
@@ -452,33 +452,42 @@
     <span class="s2">&quot;coordinate_proposal&quot;</span><span class="p">,</span>
     <span class="s2">&quot;covariance_proposal&quot;</span><span class="p">,</span>
     <span class="s2">&quot;init&quot;</span><span class="p">,</span>
-    <span class="s2">&quot;live_covariance&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;live_covariance_factor&quot;</span><span class="p">,</span>
     <span class="s2">&quot;live_widths&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;sample_direction_from_covariance_factor&quot;</span><span class="p">,</span>
     <span class="s2">&quot;slice_constrained_step&quot;</span><span class="p">,</span>
     <span class="s2">&quot;swig_as_top_level_api&quot;</span><span class="p">,</span>
 <span class="p">]</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">sample_direction_from_covariance</span><span class="p">(</span>
-    <span class="n">rng_key</span><span class="p">:</span> <span class="n">PRNGKey</span><span class="p">,</span> <span class="n">position</span><span class="p">:</span> <span class="n">ArrayTree</span><span class="p">,</span> <span class="n">cov</span><span class="p">:</span> <span class="n">Array</span>
+<div class="viewcode-block" id="sample_direction_from_covariance_factor">
+<a class="viewcode-back" href="../../../autoapi/blackjax/ns/nss/index.html#blackjax.ns.nss.sample_direction_from_covariance_factor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sample_direction_from_covariance_factor</span><span class="p">(</span>
+    <span class="n">rng_key</span><span class="p">:</span> <span class="n">PRNGKey</span><span class="p">,</span> <span class="n">position</span><span class="p">:</span> <span class="n">ArrayTree</span><span class="p">,</span> <span class="n">cov_sqrt</span><span class="p">:</span> <span class="n">Array</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ArrayTree</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A random direction shaped by ``cov``, scaled to Mahalanobis norm 2.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A random direction shaped by ``cov_sqrt``, with Mahalanobis norm 2.</span>
 
-<span class="sd">    Samples ``d ~ N(0, cov)`` and normalizes it with ``inv(cov)`` to a length of</span>
-<span class="sd">    2 in the covariance metric (~2 std devs, a step size that mixes well). Uses</span>
-<span class="sd">    ``inv(cov)`` rather than an explicit Cholesky factor, has encountered differing</span>
-<span class="sd">    behavior on GPU.</span>
+<span class="sd">    Draws a standard-normal vector ``z`` and returns</span>
+<span class="sd">    ``2 * cov_sqrt @ z / ||z||``. When ``cov_sqrt @ cov_sqrt.T = cov``, the</span>
+<span class="sd">    resulting direction has length 2 in the covariance metric (~2 std devs, a</span>
+<span class="sd">    step size that mixes well), without forming ``inv(cov)``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">_</span><span class="p">,</span> <span class="n">unravel_fn</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">flatten_util</span><span class="o">.</span><span class="n">ravel_pytree</span><span class="p">(</span><span class="n">position</span><span class="p">)</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">multivariate_normal</span><span class="p">(</span><span class="n">rng_key</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">cov</span><span class="p">)</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">d</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">d</span> <span class="o">@</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov</span><span class="p">)</span> <span class="o">@</span> <span class="n">d</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">unravel_fn</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">dimension</span> <span class="o">=</span> <span class="n">cov_sqrt</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span>
+        <span class="n">rng_key</span><span class="p">,</span>
+        <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">dimension</span><span class="p">,),</span>
+        <span class="n">dtype</span><span class="o">=</span><span class="n">cov_sqrt</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">direction</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="n">cov_sqrt</span> <span class="o">@</span> <span class="n">z</span><span class="p">)</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">unravel_fn</span><span class="p">(</span><span class="n">direction</span><span class="p">)</span></div>
+
 
 
 <div class="viewcode-block" id="covariance_proposal">
 <a class="viewcode-back" href="../../../autoapi/blackjax/ns/nss/index.html#blackjax.ns.nss.covariance_proposal">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">covariance_proposal</span><span class="p">(</span>
-    <span class="n">init_state_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">loglikelihood_0</span><span class="p">:</span> <span class="n">Array</span><span class="p">,</span> <span class="n">cov</span><span class="p">:</span> <span class="n">Array</span>
+    <span class="n">init_state_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">loglikelihood_0</span><span class="p">:</span> <span class="n">Array</span><span class="p">,</span> <span class="n">cov_sqrt</span><span class="p">:</span> <span class="n">Array</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Proposal generator for nested slice sampling.</span>
 
@@ -493,7 +502,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">proposal_generator</span><span class="p">(</span><span class="n">rng_key</span><span class="p">,</span> <span class="n">position</span><span class="p">,</span> <span class="n">logdensity_fn</span><span class="p">):</span>
         <span class="k">del</span> <span class="n">logdensity_fn</span>  <span class="c1"># NS gates on the recorded loglikelihood, not logdensity</span>
-        <span class="n">direction</span> <span class="o">=</span> <span class="n">sample_direction_from_covariance</span><span class="p">(</span><span class="n">rng_key</span><span class="p">,</span> <span class="n">position</span><span class="p">,</span> <span class="n">cov</span><span class="p">)</span>
+        <span class="n">direction</span> <span class="o">=</span> <span class="n">sample_direction_from_covariance_factor</span><span class="p">(</span><span class="n">rng_key</span><span class="p">,</span> <span class="n">position</span><span class="p">,</span> <span class="n">cov_sqrt</span><span class="p">)</span>
 
         <span class="k">def</span><span class="w"> </span><span class="nf">slice_fn</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
             <span class="n">x</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">p</span><span class="p">,</span> <span class="n">d</span><span class="p">:</span> <span class="n">p</span> <span class="o">+</span> <span class="n">t</span> <span class="o">*</span> <span class="n">d</span><span class="p">,</span> <span class="n">position</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
@@ -539,20 +548,20 @@
 
 
 
-<div class="viewcode-block" id="live_covariance">
-<a class="viewcode-back" href="../../../autoapi/blackjax/ns/nss/index.html#blackjax.ns.nss.live_covariance">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">live_covariance</span><span class="p">(</span>
+<div class="viewcode-block" id="live_covariance_factor">
+<a class="viewcode-back" href="../../../autoapi/blackjax/ns/nss/index.html#blackjax.ns.nss.live_covariance_factor">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">live_covariance_factor</span><span class="p">(</span>
     <span class="n">rng_key</span><span class="p">:</span> <span class="n">PRNGKey</span><span class="p">,</span>
     <span class="n">state</span><span class="p">:</span> <span class="n">NSState</span><span class="p">,</span>
     <span class="n">info</span><span class="p">:</span> <span class="n">NSInfo</span><span class="p">,</span>
     <span class="n">params</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ArrayTree</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ArrayTree</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Live-point covariance, recomputed each step to shape the direction.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cholesky factor of the live covariance, recomputed once per NS step.&quot;&quot;&quot;</span>
     <span class="c1"># rng_key, info and params are unused here but required by the</span>
     <span class="c1"># adaptive-kernel callback protocol (update_inner_kernel_params_fn).</span>
-    <span class="k">return</span> <span class="p">{</span>
-        <span class="s2">&quot;cov&quot;</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">particles_covariance_matrix</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">particles</span><span class="o">.</span><span class="n">position</span><span class="p">))</span>
-    <span class="p">}</span></div>
+    <span class="k">del</span> <span class="n">rng_key</span><span class="p">,</span> <span class="n">info</span><span class="p">,</span> <span class="n">params</span>
+    <span class="n">cov</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">particles_covariance_matrix</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">particles</span><span class="o">.</span><span class="n">position</span><span class="p">))</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;cov_sqrt&quot;</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">cov</span><span class="p">)}</span></div>
 
 
 
@@ -566,11 +575,11 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ArrayTree</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-axis live-point spread (std): the per-coordinate slice widths for SwiG.</span>
 
-<span class="sd">    The coordinate counterpart of :func:`live_covariance`: only the marginal</span>
+<span class="sd">    The coordinate counterpart of :func:`live_covariance_factor`: only the marginal</span>
 <span class="sd">    per-axis spread is used, so axis correlations are deliberately ignored -- the</span>
 <span class="sd">    defining trait of a coordinate (slice-within-Gibbs) move. Overridable via the</span>
 <span class="sd">    ``inner_kernel_params`` seam of :func:`build_swig_kernel` and</span>
-<span class="sd">    :func:`swig_as_top_level_api`, mirroring :func:`live_covariance`.</span>
+<span class="sd">    :func:`swig_as_top_level_api`, mirroring :func:`live_covariance_factor`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># rng_key, info and params are unused here but required by the</span>
     <span class="c1"># adaptive-kernel callback protocol (update_inner_kernel_params_fn).</span>
@@ -610,7 +619,7 @@
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
     <span class="n">max_shrinkage</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
     <span class="n">proposal</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">covariance_proposal</span><span class="p">,</span>
-    <span class="n">inner_kernel_params</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">live_covariance</span><span class="p">,</span>
+    <span class="n">inner_kernel_params</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">live_covariance_factor</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the Nested Slice Sampling kernel.</span>
 
@@ -629,13 +638,14 @@
 <span class="sd">    max_shrinkage</span>
 <span class="sd">        Cap on shrinkage evaluations per slice (default 100).</span>
 <span class="sd">    proposal</span>
-<span class="sd">        Proposal factory ``(init_state_fn, loglikelihood_0, cov) -&gt;</span>
+<span class="sd">        Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) -&gt;</span>
 <span class="sd">        proposal_generator`` (:func:`covariance_proposal` by default). Override</span>
 <span class="sd">        to write a custom nested stepper.</span>
 <span class="sd">    inner_kernel_params</span>
 <span class="sd">        Computes the inner-kernel parameters from the live points each step,</span>
-<span class="sd">        ``(rng_key, state, info, params) -&gt; params`` (:func:`live_covariance`</span>
-<span class="sd">        by default, the live-point covariance).</span>
+<span class="sd">        ``(rng_key, state, info, params) -&gt; params``</span>
+<span class="sd">        (:func:`live_covariance_factor` by default, the Cholesky factor of the</span>
+<span class="sd">        live-point covariance).</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -795,7 +805,7 @@
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
     <span class="n">max_shrinkage</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
     <span class="n">proposal</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">covariance_proposal</span><span class="p">,</span>
-    <span class="n">inner_kernel_params</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">live_covariance</span><span class="p">,</span>
+    <span class="n">inner_kernel_params</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">=</span> <span class="n">live_covariance_factor</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SamplingAlgorithm</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Creates a Nested Slice Sampling (NSS) algorithm, ``blackjax.nss``.</span>
 
@@ -822,13 +832,14 @@
 <span class="sd">    max_shrinkage</span>
 <span class="sd">        Cap on shrinkage evaluations per slice (default 100).</span>
 <span class="sd">    proposal</span>
-<span class="sd">        Proposal factory ``(init_state_fn, loglikelihood_0, cov) -&gt;</span>
+<span class="sd">        Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) -&gt;</span>
 <span class="sd">        proposal_generator`` (:func:`covariance_proposal` by default). Override</span>
 <span class="sd">        to write a custom nested stepper.</span>
 <span class="sd">    inner_kernel_params</span>
 <span class="sd">        Computes the inner-kernel parameters from the live points,</span>
-<span class="sd">        ``(rng_key, state, info, params) -&gt; params`` (:func:`live_covariance`</span>
-<span class="sd">        by default). Used both to seed ``init`` and to update each step.</span>
+<span class="sd">        ``(rng_key, state, info, params) -&gt; params``</span>
+<span class="sd">        (:func:`live_covariance_factor` by default). Used both to seed ``init``</span>
+<span class="sd">        and to update each step.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>

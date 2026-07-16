@@ -19,9 +19,10 @@ Functions
 
 .. autoapisummary::
 
+   blackjax.ns.nss.sample_direction_from_covariance_factor
    blackjax.ns.nss.covariance_proposal
    blackjax.ns.nss.coordinate_proposal
-   blackjax.ns.nss.live_covariance
+   blackjax.ns.nss.live_covariance_factor
    blackjax.ns.nss.live_widths
    blackjax.ns.nss.slice_constrained_step
    blackjax.ns.nss.build_kernel
@@ -34,7 +35,17 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: covariance_proposal(init_state_fn: Callable, loglikelihood_0: blackjax.types.Array, cov: blackjax.types.Array) -> Callable
+.. py:function:: sample_direction_from_covariance_factor(rng_key: blackjax.types.PRNGKey, position: blackjax.types.ArrayTree, cov_sqrt: blackjax.types.Array) -> blackjax.types.ArrayTree
+
+   A random direction shaped by ``cov_sqrt``, with Mahalanobis norm 2.
+
+   Draws a standard-normal vector ``z`` and returns
+   ``2 * cov_sqrt @ z / ||z||``. When ``cov_sqrt @ cov_sqrt.T = cov``, the
+   resulting direction has length 2 in the covariance metric (~2 std devs, a
+   step size that mixes well), without forming ``inv(cov)``.
+
+
+.. py:function:: covariance_proposal(init_state_fn: Callable, loglikelihood_0: blackjax.types.Array, cov_sqrt: blackjax.types.Array) -> Callable
 
    Proposal generator for nested slice sampling.
 
@@ -62,20 +73,20 @@ Module Contents
    nested coordinate stepper.
 
 
-.. py:function:: live_covariance(rng_key: blackjax.types.PRNGKey, state: blackjax.ns.base.NSState, info: blackjax.ns.base.NSInfo, params: dict[str, blackjax.types.ArrayTree] | None = None) -> dict[str, blackjax.types.ArrayTree]
+.. py:function:: live_covariance_factor(rng_key: blackjax.types.PRNGKey, state: blackjax.ns.base.NSState, info: blackjax.ns.base.NSInfo, params: dict[str, blackjax.types.ArrayTree] | None = None) -> dict[str, blackjax.types.ArrayTree]
 
-   Live-point covariance, recomputed each step to shape the direction.
+   Cholesky factor of the live covariance, recomputed once per NS step.
 
 
 .. py:function:: live_widths(rng_key: blackjax.types.PRNGKey, state: blackjax.ns.base.NSState, info: blackjax.ns.base.NSInfo, params: dict[str, blackjax.types.ArrayTree] | None = None) -> dict[str, blackjax.types.ArrayTree]
 
    Per-axis live-point spread (std): the per-coordinate slice widths for SwiG.
 
-   The coordinate counterpart of :func:`live_covariance`: only the marginal
+   The coordinate counterpart of :func:`live_covariance_factor`: only the marginal
    per-axis spread is used, so axis correlations are deliberately ignored -- the
    defining trait of a coordinate (slice-within-Gibbs) move. Overridable via the
    ``inner_kernel_params`` seam of :func:`build_swig_kernel` and
-   :func:`swig_as_top_level_api`, mirroring :func:`live_covariance`.
+   :func:`swig_as_top_level_api`, mirroring :func:`live_covariance_factor`.
 
 
 .. py:function:: slice_constrained_step(init_state_fn: Callable, slice_kernel: Callable, proposal: Callable) -> Callable
@@ -90,7 +101,7 @@ Module Contents
    :func:`~blackjax.ns.from_mcmc.build_kernel`.
 
 
-.. py:function:: build_kernel(init_state_fn: Callable, num_inner_steps: int, num_delete: int = 1, max_steps: int = 10, max_shrinkage: int = 100, proposal: Callable = covariance_proposal, inner_kernel_params: Callable = live_covariance) -> Callable
+.. py:function:: build_kernel(init_state_fn: Callable, num_inner_steps: int, num_delete: int = 1, max_steps: int = 10, max_shrinkage: int = 100, proposal: Callable = covariance_proposal, inner_kernel_params: Callable = live_covariance_factor) -> Callable
 
    Build the Nested Slice Sampling kernel.
 
@@ -101,12 +112,13 @@ Module Contents
    :param num_delete: Number of particles deleted and replaced per step (default 1).
    :param max_steps: Cap on stepping-out expansions per slice (default 10).
    :param max_shrinkage: Cap on shrinkage evaluations per slice (default 100).
-   :param proposal: Proposal factory ``(init_state_fn, loglikelihood_0, cov) ->
+   :param proposal: Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) ->
                     proposal_generator`` (:func:`covariance_proposal` by default). Override
                     to write a custom nested stepper.
    :param inner_kernel_params: Computes the inner-kernel parameters from the live points each step,
-                               ``(rng_key, state, info, params) -> params`` (:func:`live_covariance`
-                               by default, the live-point covariance).
+                               ``(rng_key, state, info, params) -> params``
+                               (:func:`live_covariance_factor` by default, the Cholesky factor of the
+                               live-point covariance).
 
    :rtype: A kernel ``kernel(rng_key, state)`` that returns ``(new_state, info)``.
 
@@ -159,7 +171,7 @@ Module Contents
    :rtype: A kernel ``kernel(rng_key, state)`` that returns ``(new_state, info)``.
 
 
-.. py:function:: as_top_level_api(logprior_fn: Callable, loglikelihood_fn: Callable, num_inner_steps: int, num_delete: int = 1, max_steps: int = 10, max_shrinkage: int = 100, proposal: Callable = covariance_proposal, inner_kernel_params: Callable = live_covariance) -> blackjax.SamplingAlgorithm
+.. py:function:: as_top_level_api(logprior_fn: Callable, loglikelihood_fn: Callable, num_inner_steps: int, num_delete: int = 1, max_steps: int = 10, max_shrinkage: int = 100, proposal: Callable = covariance_proposal, inner_kernel_params: Callable = live_covariance_factor) -> blackjax.SamplingAlgorithm
 
    Creates a Nested Slice Sampling (NSS) algorithm, ``blackjax.nss``.
 
@@ -177,12 +189,13 @@ Module Contents
    :param num_delete: Number of particles deleted and replaced per step (default 1).
    :param max_steps: Cap on stepping-out expansions per slice (default 10).
    :param max_shrinkage: Cap on shrinkage evaluations per slice (default 100).
-   :param proposal: Proposal factory ``(init_state_fn, loglikelihood_0, cov) ->
+   :param proposal: Proposal factory ``(init_state_fn, loglikelihood_0, cov_sqrt) ->
                     proposal_generator`` (:func:`covariance_proposal` by default). Override
                     to write a custom nested stepper.
    :param inner_kernel_params: Computes the inner-kernel parameters from the live points,
-                               ``(rng_key, state, info, params) -> params`` (:func:`live_covariance`
-                               by default). Used both to seed ``init`` and to update each step.
+                               ``(rng_key, state, info, params) -> params``
+                               (:func:`live_covariance_factor` by default). Used both to seed ``init``
+                               and to update each step.
 
    :returns: * A ``SamplingAlgorithm`` whose ``step(rng_key, state)`` returns
              * ``(new_state, info)``.
